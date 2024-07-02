@@ -1,45 +1,33 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const puppeteer = require('puppeteer');
+const pdf = require('html-pdf');
 
 const app = express();
-const port =  3000;
+const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.get('/', (req, res) => {
-   res.json({message:"fsdafdsa"});
-  });
-
-app.post('/generate-pdf', async (req, res) => {
+app.post('/generate-pdf', (req, res) => {
   const { html, css } = req.body;
 
-  try {
-    const browser = await puppeteer.launch({
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    const page = await browser.newPage();
-    
-    // Combine HTML and CSS
-    await page.setContent(`
-      <style>${css}</style>
-      ${html}
-    `);
-    
-    const pdfBuffer = await page.pdf({ format: 'A4' });
-    await browser.close();
+  // Combine HTML and CSS
+  const content = `
+    <style>${css}</style>
+    ${html}
+  `;
 
-    res.set({
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': 'attachment; filename=generated.pdf',
-    });
+  pdf.create(content).toStream((err, stream) => {
+    if (err) {
+      console.error('Error generating PDF:', err);
+      return res.status(500).send('Error generating PDF');
+    }
 
-    res.send(pdfBuffer);
-  } catch (error) {
-    console.log(error);
-    res.status(500).send('Error generating PDF');
-  }
+    res.setHeader('Content-type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename=generated.pdf');
+
+    stream.pipe(res);
+  });
 });
 
 app.listen(port, () => {
