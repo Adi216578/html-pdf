@@ -1,33 +1,47 @@
 const express = require('express');
 const bodyParser = require('body-parser');
-const pdf = require('html-pdf');
-
+const { PDFDocument, rgb } = require('pdf-lib');
+const { JSDOM } = require('jsdom');
 const app = express();
 const port = process.env.PORT || 3000;
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-app.post('/generate-pdf', (req, res) => {
+app.post('/generate-pdf', async (req, res) => {
   const { html, css } = req.body;
 
-  // Combine HTML and CSS
-  const content = `
-    <style>${css}</style>
-    ${html}
-  `;
+  try {
+    const dom = new JSDOM(`<html><head><style>${css}</style></head><body>${html}</body></html>`);
+    const content = dom.window.document.body.textContent || "";
 
-  pdf.create(content).toStream((err, stream) => {
-    if (err) {
-      console.error('Error generating PDF:', err);
-      return res.status(500).send('Error generating PDF');
-    }
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage();
+    const { width, height } = page.getSize();
+    const fontSize = 12;
+    const textWidth = width - 2 * fontSize;
+    const textHeight = height - 2 * fontSize;
 
-    res.setHeader('Content-type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename=generated.pdf');
+    page.drawText(content, {
+      x: fontSize,
+      y: textHeight - fontSize,
+      size: fontSize,
+      color: rgb(0, 0, 0),
+      maxWidth: textWidth,
+    });
 
-    stream.pipe(res);
-  });
+    const pdfBytes = await pdfDoc.save();
+
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'attachment; filename=generated.pdf',
+    });
+
+    res.send(Buffer.from(pdfBytes));
+  } catch (error) {
+    console.error('Error generating PDF:', error);
+    res.status(500).send('Error generating PDF');
+  }
 });
 
 app.listen(port, () => {
